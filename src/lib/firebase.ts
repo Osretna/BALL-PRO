@@ -50,7 +50,7 @@ console.log("Firebase config check debug:", {
   hasApiKey: !!firebaseConfig.apiKey,
   apiKey: firebaseConfig.apiKey ? `${firebaseConfig.apiKey.substring(0, 5)}...` : null,
   projectId: firebaseConfig.projectId,
-  databaseId: firebaseConfig.firestoreDatabaseId
+  databaseId: (firebaseConfig as any).firestoreDatabaseId
 });
 
 let app;
@@ -62,7 +62,8 @@ if (isFirebaseConfigured) {
   try {
     console.log("Attempting to initialize Firebase...");
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    const dbId = (firebaseConfig as any).firestoreDatabaseId;
+    db = dbId ? getFirestore(app, dbId) : getFirestore(app);
     auth = getAuth(app);
     googleProvider = new GoogleAuthProvider();
     console.log("Firebase initialized successfully. auth status:", !!auth);
