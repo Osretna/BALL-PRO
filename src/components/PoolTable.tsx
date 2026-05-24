@@ -76,6 +76,7 @@ export function PoolTable({
   });
 
   const [powerSlider, setPowerSlider] = useState<number>(0);
+  const [isStickGrabbed, setIsStickGrabbed] = useState(false);
   const [isStriking, setIsStriking] = useState(false);
   const [isAiTurnText, setIsAiTurnText] = useState(false);
   const [statusNotification, setStatusNotification] = useState<string>("");
@@ -346,6 +347,34 @@ export function PoolTable({
         ctx.translate(cueBall.x, cueBall.y);
         ctx.rotate(angle);
 
+        // Draw a glowing hover/drag outline around the cue stick if grabbed
+        if (isStickGrabbed) {
+          ctx.strokeStyle = "rgba(16, 185, 129, 0.4)";
+          ctx.lineWidth = 14;
+          ctx.beginPath();
+          ctx.moveTo(-stickDist - 128, 0);
+          ctx.lineTo(-stickDist + 1, 0);
+          ctx.stroke();
+
+          // Outer glowing touch ring at the stick butt
+          ctx.fillStyle = "rgba(16, 185, 129, 0.7)";
+          ctx.beginPath();
+          ctx.arc(-stickDist - 125, 0, 11, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        } else {
+          // Draw a small high-contrast pointer grab tip for desktop hovered and touch guide
+          ctx.fillStyle = "rgba(245, 158, 11, 0.7)";
+          ctx.beginPath();
+          ctx.arc(-stickDist - 125, 0, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
         // Create gradient color for cue stick based on current skin
         const cueGrad = ctx.createLinearGradient(-stickDist - 120, 0, -stickDist, 0);
         if (cueSkin.id === "classic_wood") {
@@ -407,7 +436,7 @@ export function PoolTable({
     return () => {
       cancelAnimationFrame(animFrame);
     };
-  }, [balls, cueStick, powerSlider, theme, cueSkin, isSimulationActive, isMyTurn, ballInHandActive, isAiTurnText]);
+  }, [balls, cueStick, powerSlider, theme, cueSkin, isSimulationActive, isMyTurn, ballInHandActive, isAiTurnText, isStickGrabbed]);
 
   // Handle simulation updates (Physics tick solver)
   useEffect(() => {
@@ -529,6 +558,48 @@ export function PoolTable({
 
   const draggingStickRef = useRef<boolean>(false);
 
+  const isTouchNearStick = (tx: number, ty: number, cueBall: Ball, angle: number) => {
+    const startDist = BALL_RADIUS + 8 + (powerSlider / 100) * 45;
+    const endDist = startDist + 150;
+    
+    // The stick points BACKWARDS from the shooting angle (angle)
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const x1 = cueBall.x - startDist * cos;
+    const y1 = cueBall.y - startDist * sin;
+    const x2 = cueBall.x - endDist * cos;
+    const y2 = cueBall.y - endDist * sin;
+    
+    // Calculate distance from point (tx, ty) to segment (x1, y1)-(x2, y2)
+    const A = tx - x1;
+    const B = ty - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+    
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+    if (lenSq !== 0) {
+      param = dot / lenSq;
+    }
+    
+    let xx, yy;
+    if (param < 0) {
+      xx = x1;
+      yy = y1;
+    } else if (param > 1) {
+      xx = x2;
+      yy = y2;
+    } else {
+      xx = x1 + param * C;
+      yy = y1 + param * D;
+    }
+    
+    const dx = tx - xx;
+    const dy = ty - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
   // Mouse interaction listener supporting accurate aiming relative to cue ball and stick
   const handleCanvasInteraction = (e: React.MouseEvent<HTMLCanvasElement>, isStart: boolean = false) => {
     if (!isMyTurn || isSimulationActive || isAiTurnText) return;
@@ -580,29 +651,33 @@ export function PoolTable({
     }
 
     // B: Traditional drag and grab-stick swivel calculations
-    const dx = clickX - cueBall.x;
-    const dy = clickY - cueBall.y;
-    const alpha = Math.atan2(dy, dx);
-
     const isDrag = e.buttons === 1;
-    let isBackSide = false;
+    let grabStick = false;
 
     if (isDrag) {
       if (isStart) {
-        const angleDiff = Math.atan2(Math.sin(alpha - cueStick.angle), Math.cos(alpha - cueStick.angle));
-        isBackSide = Math.abs(angleDiff) > Math.PI / 2;
-        draggingStickRef.current = isBackSide;
+        const dist = isTouchNearStick(clickX, clickY, cueBall, cueStick.angle);
+        grabStick = dist < 45;
+        draggingStickRef.current = grabStick;
+        setIsStickGrabbed(grabStick);
       } else {
-        isBackSide = draggingStickRef.current;
+        grabStick = draggingStickRef.current;
       }
     } else {
-      // Hovering adjustments
-      const angleDiff = Math.atan2(Math.sin(alpha - cueStick.angle), Math.cos(alpha - cueStick.angle));
-      isBackSide = Math.abs(angleDiff) > Math.PI / 2;
-      draggingStickRef.current = isBackSide;
+      const dist = isTouchNearStick(clickX, clickY, cueBall, cueStick.angle);
+      grabStick = dist < 45;
+      draggingStickRef.current = grabStick;
     }
 
-    const finalAngle = isBackSide ? alpha - Math.PI : alpha;
+    let finalAngle = cueStick.angle;
+    if (grabStick) {
+      // Direct rotate by grabbing cue stick backwards
+      finalAngle = Math.atan2(clickY - cueBall.y, clickX - cueBall.x) + Math.PI;
+    } else {
+      // Normal drag rotates relative to cue ball placement
+      finalAngle = Math.atan2(clickY - cueBall.y, clickX - cueBall.x);
+    }
+
     setCueStick((prev) => ({ ...prev, angle: finalAngle, isAiming: true }));
   };
 
@@ -610,7 +685,6 @@ export function PoolTable({
   const handleTouchInteraction = (e: React.TouchEvent<HTMLCanvasElement>, isStart: boolean = false) => {
     if (!isMyTurn || isSimulationActive || isAiTurnText) return;
     
-    // Prevent default scrolling on mobile when aiming on canvas
     if (e.cancelable) {
       e.preventDefault();
     }
@@ -662,20 +736,23 @@ export function PoolTable({
     }
 
     // B: Stick/Aim dragging calculation
-    const dx = clickX - cueBall.x;
-    const dy = clickY - cueBall.y;
-    const alpha = Math.atan2(dy, dx);
-
-    let isBackSide = false;
+    let grabStick = false;
     if (isStart) {
-      const angleDiff = Math.atan2(Math.sin(alpha - cueStick.angle), Math.cos(alpha - cueStick.angle));
-      isBackSide = Math.abs(angleDiff) > Math.PI / 2;
-      draggingStickRef.current = isBackSide;
+      const dist = isTouchNearStick(clickX, clickY, cueBall, cueStick.angle);
+      grabStick = dist < 50; // Super forgiving 50px finger radius
+      draggingStickRef.current = grabStick;
+      setIsStickGrabbed(grabStick);
     } else {
-      isBackSide = draggingStickRef.current;
+      grabStick = draggingStickRef.current;
     }
 
-    const finalAngle = isBackSide ? alpha - Math.PI : alpha;
+    let finalAngle = cueStick.angle;
+    if (grabStick) {
+      finalAngle = Math.atan2(clickY - cueBall.y, clickX - cueBall.x) + Math.PI;
+    } else {
+      finalAngle = Math.atan2(clickY - cueBall.y, clickX - cueBall.x);
+    }
+
     setCueStick((prev) => ({ ...prev, angle: finalAngle, isAiming: true }));
   };
 
@@ -792,9 +869,17 @@ export function PoolTable({
             height={TABLE_HEIGHT}
             onMouseMove={(e) => handleCanvasInteraction(e, false)}
             onMouseDown={(e) => handleCanvasInteraction(e, true)}
+            onMouseUp={() => {
+              setIsStickGrabbed(false);
+              draggingStickRef.current = false;
+            }}
             onTouchStart={(e) => handleTouchInteraction(e, true)}
             onTouchMove={(e) => handleTouchInteraction(e, false)}
-            onTouchEnd={() => setCueStick((prev) => ({ ...prev, isAiming: false }))}
+            onTouchEnd={() => {
+              setCueStick((prev) => ({ ...prev, isAiming: false }));
+              setIsStickGrabbed(false);
+              draggingStickRef.current = false;
+            }}
             className={`w-full h-full block touch-none cursor-crosshair ${
               ballInHandActive ? "cursor-move" : "cursor-crosshair"
             }`}

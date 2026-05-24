@@ -116,6 +116,39 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+  const [copiedProjectId, setCopiedProjectId] = useState(false);
+
+  const handleCopyText = (text: string, isDomain: boolean) => {
+    try {
+      navigator.clipboard.writeText(text);
+      if (isDomain) {
+        setCopiedDomain(true);
+        setTimeout(() => setCopiedDomain(false), 2000);
+      } else {
+        setCopiedProjectId(true);
+        setTimeout(() => setCopiedProjectId(false), 2000);
+      }
+    } catch (e) {
+      const el = document.createElement("textarea");
+      el.value = text;
+      document.body.appendChild(el);
+      el.select();
+      try {
+        document.execCommand("copy");
+      } catch (err) {
+        console.error("Fallback copy failed", err);
+      }
+      document.body.removeChild(el);
+      if (isDomain) {
+        setCopiedDomain(true);
+        setTimeout(() => setCopiedDomain(false), 2000);
+      } else {
+        setCopiedProjectId(true);
+        setTimeout(() => setCopiedProjectId(false), 2000);
+      }
+    }
+  };
 
   // Setup sound settings from local tracker
   useEffect(() => {
@@ -912,23 +945,25 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans transition-all selection:bg-emerald-500 selection:text-slate-950 pb-10" id="main-app-container">
       {/* Upper header navbar */}
-      <Navbar
-        playerStats={playerStats}
-        currentTab={currentTab}
-        setTab={setTab}
-        user={currentUser}
-        onLoginTrigger={handleGoogleAuth}
-        onLogoutTrigger={handleLogout}
-        isRoomActive={selectedMode !== null}
-        onQuitRoom={handleQuitRoom}
-      />
+      <div className={selectedMode !== null ? "hidden sm:block shrink-0" : "block shrink-0"}>
+        <Navbar
+          playerStats={playerStats}
+          currentTab={currentTab}
+          setTab={setTab}
+          user={currentUser}
+          onLoginTrigger={handleGoogleAuth}
+          onLogoutTrigger={handleLogout}
+          isRoomActive={selectedMode !== null}
+          onQuitRoom={handleQuitRoom}
+        />
+      </div>
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 pt-6">
         {authError && (
           <div className="mb-6 p-5 border border-red-500/30 bg-red-950/20 rounded-2xl text-slate-100 relative overflow-hidden animate-fade-in" id="auth-error-guide-banner">
             <button
               onClick={() => setAuthError(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition p-1 bg-slate-900/60 rounded-full cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition p-1 bg-slate-900/60 rounded-full cursor-pointer z-10"
               title="إغلاق التنبيه"
             >
               <X className="h-4 w-4" />
@@ -965,17 +1000,43 @@ export default function App() {
                       <div>
                         <span className="text-3xs text-slate-400 block mb-0.5">النطاق المطلوب إضافته (Domain to copy):</span>
                         <code className="text-emerald-400 font-mono font-bold select-all bg-slate-900 px-2 py-1 rounded block text-center tracking-wider">{window.location.hostname}</code>
+                        <button
+                          onClick={() => handleCopyText(window.location.hostname, true)}
+                          className={`mt-1.5 w-full py-1.5 px-3 rounded-lg text-2xs font-bold transition flex items-center justify-center gap-1.5 border ${
+                            copiedDomain 
+                              ? "bg-emerald-500 text-slate-950 border-emerald-400" 
+                              : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-850"
+                          }`}
+                        >
+                          {copiedDomain ? "✓ تم نسخ النطاق!" : "نسخ النطاق الحالي"}
+                        </button>
                       </div>
                       <div>
                         <span className="text-3xs text-slate-400 block mb-0.5">معرف المشروع (Project ID):</span>
                         <code className="text-amber-500 font-mono font-bold select-all bg-slate-900 px-2 py-1 rounded block text-center tracking-wider">{firebaseConfig.projectId}</code>
+                        <button
+                          onClick={() => handleCopyText(firebaseConfig.projectId, false)}
+                          className={`mt-1.5 w-full py-1.5 px-3 rounded-lg text-2xs font-bold transition flex items-center justify-center gap-1.5 border ${
+                            copiedProjectId 
+                              ? "bg-amber-500 text-slate-950 border-amber-400" 
+                              : "bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-850"
+                          }`}
+                        >
+                          {copiedProjectId ? "✓ تم نسخ الـ ID!" : "نسخ معرف المشروع"}
+                        </button>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="text-3xs text-slate-400">
-                  ⚠️ إذا واجهتك أي مشاكل، يظل بإمكانك لعب البلياردو مباشرةً وبشكل كامل في الوضع المحلي دون الحاجة لتسجيل الدخول، ويتم حفظ تقدمك تلقائياً على جهازك الحالي.
+                <div className="flex flex-wrap items-center justify-between gap-3 text-3xs text-slate-400 pt-2 border-t border-slate-900">
+                  <span>⚠️ يظل بإمكانك لعب البلياردو مباشرةً في الوضع المحلي دون تسجيل دخول وسيتم حفظ تقدمك تلقائياً.</span>
+                  <button
+                    onClick={() => setAuthError(null)}
+                    className="px-3 py-1 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-lg text-slate-200 font-bold transition"
+                  >
+                    إغلاق التنبيه ولعب أوفلاين
+                  </button>
                 </div>
               </div>
             </div>
