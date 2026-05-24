@@ -1,5 +1,56 @@
 {
   "entities": {
+    "deposit_request": {
+      "title": "Deposit Request",
+      "description": "User cash package deposit request via InstaPay for manual admin approval of gold coins.",
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "description": "The unique request ID."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The UID of the player requesting coins."
+        },
+        "userDisplayName": {
+          "type": "string",
+          "description": "DisplayName of the user."
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "Email address of the user."
+        },
+        "amount": {
+          "type": "integer",
+          "description": "EGP Package price amount (50 or 100)."
+        },
+        "coins": {
+          "type": "integer",
+          "description": "Gold coins to grant the player (500 or 1100)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"],
+          "description": "State of transaction approval inside Admin Panel."
+        },
+        "transferCode": {
+          "type": "string",
+          "description": "The reference/receipt/transaction ID entered by the player."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the deposit request was submitted."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the request status was updated."
+        }
+      },
+      "required": ["requestId", "userId", "userDisplayName", "amount", "coins", "status", "transferCode", "createdAt"]
+    },
     "profile": {
       "title": "Player Profile",
       "description": "User profile with level, coins, and customization options.",
@@ -181,6 +232,10 @@
     }
   },
   "firestore": {
+    "deposit_requests/{requestId}": {
+      "schema": "deposit_request",
+      "description": "Stores user coin package purchase requests for admin authorization."
+    },
     "profiles/{userId}": {
       "schema": "profile",
       "description": "Stores user statistics, levels, customized themes, and achievements."

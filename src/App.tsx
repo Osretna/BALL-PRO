@@ -10,6 +10,8 @@ import { PoolTable } from "./components/PoolTable";
 import { ThemeCustomizer } from "./components/ThemeCustomizer";
 import { Dashboard } from "./components/Dashboard";
 import { GoogleAds } from "./components/GoogleAds";
+import { Shop } from "./components/Shop";
+import { AdminPanel } from "./components/AdminPanel";
 import {
   GameMode,
   Ball,
@@ -84,7 +86,7 @@ const DEFAULT_PLAYER_STATS: PlayerStats = {
 };
 
 export default function App() {
-  const [currentTab, setTab] = useState<"lobby" | "customizer" | "dashboard" | "ads">("lobby");
+  const [currentTab, setTab] = useState<"lobby" | "customizer" | "dashboard" | "ads" | "shop" | "admin">("lobby");
   const [selectedMode, setSelectedMode] = useState<GameMode | null>(null);
   const [aiDifficulty, setAiDifficulty] = useState<AICutDifficulty>(AICutDifficulty.MEDIUM);
 
@@ -242,6 +244,14 @@ export default function App() {
         // Track turn synchronizations
         setCurrentTurnId(data.turn);
 
+        // If turn has transitioned to us and foulOccurred is True, grant ball-in-hand!
+        if (currentUser && data.turn === currentUser.uid && data.foulOccurred) {
+          setBallInHandActive(true);
+          updateDoc(doc(db, "rooms", currentRoomId), {
+            foulOccurred: false
+          }).catch((err) => console.error("Error resetting foulState flag", err));
+        }
+
         // Sync groups
         if (currentUser?.uid === data.hostId) {
           setMyBallGroup(data.hostBallGroup);
@@ -349,11 +359,26 @@ export default function App() {
     }
   };
 
+  const handleBallsPlaced = (placedBalls: Ball[]) => {
+    setBalls(placedBalls);
+    setBallInHandActive(false);
+    
+    if (selectedMode === GameMode.ONLINE_MULTIPLAYER && currentRoomId && db) {
+      const pathStr = `rooms/${currentRoomId}`;
+      updateDoc(doc(db, "rooms", currentRoomId), {
+        ballsState: JSON.stringify(placedBalls),
+        foulOccurred: false,
+        updatedAt: new Date().toISOString()
+      }).catch((e) => handleFirestoreError(e, OperationType.UPDATE, pathStr));
+    }
+  };
+
   // Master rule evaluator when billiard balls stop rolling!
   const handleTurnComplete = (
     updatedBalls: Ball[],
     ballsPocketedThisTurn: Ball[],
-    foul: boolean
+    foul: boolean,
+    foulReason?: string
   ) => {
     // 1. Check if cue ball is pocketed (Scratch!)
     const cueBall = updatedBalls.find((b) => b.type === BallType.CUE);
@@ -362,18 +387,21 @@ export default function App() {
     let localFoul = foul || cueScratch;
     let message = "";
 
-    // Respawn cue ball if scratched
-    if (cueScratch) {
-      // Place at default Head string
-      if (cueBall) {
-        cueBall.state = BallState.ON_TABLE;
-        cueBall.x = 200;
-        cueBall.y = 200;
-        cueBall.vx = 0;
-        cueBall.vy = 0;
-      }
+    // Handle any foul or cue scratch
+    if (localFoul) {
       setBallInHandActive(true);
-      message = "خطأ! تم إسقاط الكرة البيضاء (مخالفة).";
+      if (cueScratch) {
+        if (cueBall) {
+          cueBall.state = BallState.ON_TABLE;
+          cueBall.x = 200;
+          cueBall.y = 200;
+          cueBall.vx = 0;
+          cueBall.vy = 0;
+        }
+        message = "خطأ! تم إسقاط الكرة البيضاء (مخالفة). الخصم يحصل على حرة.";
+      } else {
+        message = `خطأ! مخالفة ضرب: ${foulReason || "الضربة غير قانونية"}. الخصم يحصل على حرة.`;
+      }
     }
 
     // 2. Check if the 8-ball is pocketed
@@ -821,6 +849,7 @@ export default function App() {
                 ? "stripes"
                 : "solids"
           }
+          onBallsPlaced={handleBallsPlaced}
         />
 
         {/* Online Chat and Messages bubble drawer */}
@@ -1079,6 +1108,17 @@ export default function App() {
                 });
               }
             }}
+          />
+        ) : currentTab === "shop" ? (
+          <Shop
+            playerStats={playerStats}
+            user={currentUser}
+            onLoginTrigger={handleGoogleAuth}
+          />
+        ) : currentTab === "admin" ? (
+          <AdminPanel
+            playerStats={playerStats}
+            user={currentUser}
           />
         ) : (
           <Dashboard playerStats={playerStats} />

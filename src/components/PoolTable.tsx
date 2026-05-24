@@ -36,7 +36,7 @@ interface PoolTableProps {
   currentUserId: string;
   isMyTurn: boolean;
   ballsState: Ball[];
-  onTurnComplete: (updatedBalls: Ball[], ballsPocketedThisTurn: Ball[], foul: boolean) => void;
+  onTurnComplete: (updatedBalls: Ball[], ballsPocketedThisTurn: Ball[], foul: boolean, foulReason?: string) => void;
   gameStatusText: string;
   isSimulationActive: boolean;
   setSimulationActive: (active: boolean) => void;
@@ -44,6 +44,7 @@ interface PoolTableProps {
   setBallInHandActive: (active: boolean) => void;
   myBallGroup: "solids" | "stripes" | "undecided";
   opponentBallGroup: "solids" | "stripes" | "undecided";
+  onBallsPlaced?: (placedBalls: Ball[]) => void;
 }
 
 export function PoolTable({
@@ -61,7 +62,8 @@ export function PoolTable({
   ballInHandActive,
   setBallInHandActive,
   myBallGroup,
-  opponentBallGroup
+  opponentBallGroup,
+  onBallsPlaced
 }: PoolTableProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -110,6 +112,24 @@ export function PoolTable({
       ctx.fillStyle = theme.feltColor;
       ctx.fillRect(0, 0, TABLE_WIDTH, TABLE_HEIGHT);
 
+      // 3D Table felt Spotlight vignette/lighting!
+      const feltVignette = ctx.createRadialGradient(
+        TABLE_WIDTH / 2, TABLE_HEIGHT / 2, 200,
+        TABLE_WIDTH / 2, TABLE_HEIGHT / 2, Math.max(TABLE_WIDTH, TABLE_HEIGHT) * 0.55
+      );
+      feltVignette.addColorStop(0, "rgba(255, 255, 255, 0.06)");
+      feltVignette.addColorStop(0.5, "rgba(0, 0, 0, 0)");
+      feltVignette.addColorStop(1, "rgba(0, 0, 0, 0.38)");
+      ctx.fillStyle = feltVignette;
+      ctx.fillRect(CUSHION_WIDTH, CUSHION_WIDTH, TABLE_WIDTH - CUSHION_WIDTH * 2, TABLE_HEIGHT - CUSHION_WIDTH * 2);
+
+      // 3D Inner cushion shadow overlay
+      ctx.save();
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
+      ctx.lineWidth = 6;
+      ctx.strokeRect(CUSHION_WIDTH, CUSHION_WIDTH, TABLE_WIDTH - CUSHION_WIDTH * 2, TABLE_HEIGHT - CUSHION_WIDTH * 2);
+      ctx.restore();
+
       // Draw standard Pool Table diamond patterns or subtle markings
       ctx.fillStyle = theme.accents === "gold" ? "rgba(255, 215, 0, 0.4)" : "rgba(192, 192, 192, 0.4)";
       // Draw head string & D-Zone marker
@@ -130,19 +150,29 @@ export function PoolTable({
       ctx.arc(600, TABLE_HEIGHT / 2, 3, 0, Math.PI * 2);
       ctx.fill();
 
-      // 2. Draw outer cushions frame
+      // 2. Draw outer cushions frame (3D dimensional wood frame rails)
       ctx.strokeStyle = theme.borderColor;
       ctx.lineWidth = CUSHION_WIDTH * 2;
       ctx.strokeRect(0, 0, TABLE_WIDTH, TABLE_HEIGHT);
+
+      // Wood outer bevel highlight lining to give high-end cylindrical depth
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(1, 1, TABLE_WIDTH - 2, TABLE_HEIGHT - 2);
+
+      // Frame inner wood dark groove shadow
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.55)";
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(CUSHION_WIDTH * 2 - 1.2, CUSHION_WIDTH * 2 - 1.2, TABLE_WIDTH - CUSHION_WIDTH * 4 + 2.4, TABLE_HEIGHT - CUSHION_WIDTH * 4 + 2.4);
 
       // Frameline golden inner details
       ctx.strokeStyle = theme.accents === "gold" ? "#ffd700" : "#d1d5db";
       ctx.lineWidth = 1;
       ctx.strokeRect(CUSHION_WIDTH, CUSHION_WIDTH, TABLE_WIDTH - CUSHION_WIDTH * 2, TABLE_HEIGHT - CUSHION_WIDTH * 2);
 
-      // 3. Draw pockets
+      // 3. Draw pockets (Brass plates and deep pockets)
       for (const pocket of pockets) {
-        // Outer dark glow
+        // Outer dark pocket shadow glow
         const outerGlow = ctx.createRadialGradient(
           pocket.x, pocket.y, pocket.radius * 0.4,
           pocket.x, pocket.y, pocket.radius
@@ -162,11 +192,34 @@ export function PoolTable({
         ctx.arc(pocket.x, pocket.y, pocket.radius - 2, 0, Math.PI * 2);
         ctx.fill();
 
-        // Shiny metal/gold lip rim
-        ctx.strokeStyle = theme.accents === "gold" ? "#d4af37" : "#aaa";
-        ctx.lineWidth = 2.5;
+        // Shiny metal/gold lip rim with real metallic 3D gradient (Polished brass/chrome)
+        const brassGrad = ctx.createLinearGradient(
+          pocket.x - pocket.radius, pocket.y - pocket.radius,
+          pocket.x + pocket.radius, pocket.y + pocket.radius
+        );
+        if (theme.accents === "gold") {
+          brassGrad.addColorStop(0, "#ffd700");
+          brassGrad.addColorStop(0.35, "#b38600");
+          brassGrad.addColorStop(0.7, "#fff399");
+          brassGrad.addColorStop(1, "#805c00");
+        } else {
+          brassGrad.addColorStop(0, "#ffffff");
+          brassGrad.addColorStop(0.35, "#888888");
+          brassGrad.addColorStop(0.7, "#dddddd");
+          brassGrad.addColorStop(1, "#333333");
+        }
+        
+        ctx.strokeStyle = brassGrad;
+        ctx.lineWidth = 3.2;
         ctx.beginPath();
         ctx.arc(pocket.x, pocket.y, pocket.radius - 1, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Inner pocket shadow ring for professional pool-hall depth
+        ctx.strokeStyle = "rgba(0,0,0,0.85)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(pocket.x, pocket.y, pocket.radius - 2.5, 0, Math.PI * 2);
         ctx.stroke();
       }
 
@@ -174,10 +227,18 @@ export function PoolTable({
       for (const b of balls) {
         if (b.state !== BallState.ON_TABLE) continue;
 
-        // shadow
-        ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+        // 3D Soft Radial drop shadow instead of flat gray circle!
+        const shadowGrad = ctx.createRadialGradient(
+          b.x + 2, b.y + 3, b.radius * 0.1,
+          b.x + 2, b.y + 3, b.radius * 1.3
+        );
+        shadowGrad.addColorStop(0, "rgba(0, 0, 0, 0.45)");
+        shadowGrad.addColorStop(0.5, "rgba(0, 0, 0, 0.2)");
+        shadowGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        
+        ctx.fillStyle = shadowGrad;
         ctx.beginPath();
-        ctx.arc(b.x + 2, b.y + 3, b.radius, 0, Math.PI * 2);
+        ctx.arc(b.x + 2, b.y + 3, b.radius * 1.3, 0, Math.PI * 2);
         ctx.fill();
 
         // Draw body
@@ -225,16 +286,52 @@ export function PoolTable({
 
         // Modern 3D glossy highlight dome
         const gloss = ctx.createRadialGradient(
-          b.x - b.radius * 0.3, b.y - b.radius * 0.3, 0.5,
+          b.x - b.radius * 0.35, b.y - b.radius * 0.35, 0.5,
           b.x, b.y, b.radius
         );
-        gloss.addColorStop(0, "rgba(255, 255, 255, 0.75)");
-        gloss.addColorStop(0.3, "rgba(255, 255, 255, 0.1)");
-        gloss.addColorStop(1, "rgba(0, 0, 0, 0.2)");
+        gloss.addColorStop(0, "rgba(255, 255, 255, 0.92)");
+        gloss.addColorStop(0.2, "rgba(255, 255, 255, 0.35)");
+        gloss.addColorStop(0.5, "rgba(0, 0, 0, 0.05)");
+        gloss.addColorStop(1, "rgba(0, 0, 0, 0.42)");
         ctx.fillStyle = gloss;
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
         ctx.fill();
+
+        // 3D Glass specular spot reflection
+        ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+        ctx.beginPath();
+        ctx.arc(b.x - b.radius * 0.35, b.y - b.radius * 0.35, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 4.5. High-contrast indicators for current active-group target balls
+        const activeGroup = isMyTurn ? myBallGroup : opponentBallGroup;
+        if (activeGroup !== "undecided" && !isSimulationActive && isMyTurn) {
+          const activeGroupBallsCount = balls.filter(
+            (x) =>
+              x.state === BallState.ON_TABLE &&
+              x.id !== 0 &&
+              x.id !== 8 &&
+              (activeGroup === "solids" ? x.type === BallType.SOLID : x.type === BallType.STRIPE)
+          ).length;
+
+          const isCurrentShooterBall =
+            (activeGroup === "solids" && b.type === BallType.SOLID) ||
+            (activeGroup === "stripes" && b.type === BallType.STRIPE);
+          
+          const isEightBallTarget = (activeGroupBallsCount === 0 && b.id === 8);
+
+          if (isCurrentShooterBall || isEightBallTarget) {
+            ctx.save();
+            ctx.strokeStyle = isEightBallTarget ? "#f59e0b" : "#10b981"; // Golden for 8-ball, green emerald for group balls
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 2]); // Elegant dashed outline
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.radius + 3.2, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
       }
 
       // 5. Drawing Aim Target Vector Guidelines
@@ -375,41 +472,86 @@ export function PoolTable({
           ctx.stroke();
         }
 
-        // Create gradient color for cue stick based on current skin
-        const cueGrad = ctx.createLinearGradient(-stickDist - 120, 0, -stickDist, 0);
-        if (cueSkin.id === "classic_wood") {
-          cueGrad.addColorStop(0, "#4d2c18");
-          cueGrad.addColorStop(0.5, "#a1622b");
-          cueGrad.addColorStop(1, "#ffe1b1");
-        } else if (cueSkin.id === "golden_elite") {
-          cueGrad.addColorStop(0, "#7a5000");
-          cueGrad.addColorStop(0.3, "#e5a900");
-          cueGrad.addColorStop(0.7, "#ffd700");
-          cueGrad.addColorStop(1, "#ffffec");
-        } else if (cueSkin.id === "carbon_fiber") {
-          cueGrad.addColorStop(0, "#0a0a0d");
-          cueGrad.addColorStop(0.5, "#25262e");
-          cueGrad.addColorStop(0.9, "#595d6e");
-          cueGrad.addColorStop(1, "#bfc2db");
-        } else {
-          // Neon Pulse
-          cueGrad.addColorStop(0, "#800080");
-          cueGrad.addColorStop(0.4, "#ff007f");
-          cueGrad.addColorStop(0.7, "#00ffff");
-          cueGrad.addColorStop(1, "#ffffff");
-        }
+        // Create 3D cylindrical segments for photorealistic tapered cue stick
+        const colorsShaft = cueSkin.id === "golden_elite"
+          ? { base: "#fffbf2", highlight: "#ffffff", shadow: "#dfd5be" }
+          : cueSkin.id === "carbon_fiber"
+          ? { base: "#222329", highlight: "#444654", shadow: "#0f1013" }
+          : cueSkin.id === "neon_pulse"
+          ? { base: "#00eedc", highlight: "#ffffff", shadow: "#00554f" }
+          : { base: "#fef8ee", highlight: "#ffffff", shadow: "#cebeab" }; // classic_wood
 
-        ctx.fillStyle = cueGrad;
-        // Draw elegant tapered stick pointing left to strike right
-        ctx.beginPath();
-        ctx.moveTo(-stickDist - 125, -2.5);
-        ctx.lineTo(-stickDist, -1.2);
-        ctx.lineTo(-stickDist, 1.2);
-        ctx.lineTo(-stickDist - 125, 2.5);
-        ctx.closePath();
-        ctx.fill();
+        const colorsForearm = cueSkin.id === "golden_elite"
+          ? { base: "#ffd700", highlight: "#ffffff", shadow: "#997300" }
+          : cueSkin.id === "carbon_fiber"
+          ? { base: "#111115", highlight: "#333540", shadow: "#050508" }
+          : cueSkin.id === "neon_pulse"
+          ? { base: "#e6006f", highlight: "#ffb3d9", shadow: "#4d0024" }
+          : { base: "#a1622b", highlight: "#ffe1b1", shadow: "#4d2c18" };
 
-        // Tip accents (Ivory ferrule + leather tip)
+        const colorsWrap = cueSkin.id === "golden_elite"
+          ? { base: "#1e1e1e", highlight: "#ffd700", shadow: "#000000" }
+          : cueSkin.id === "carbon_fiber"
+          ? { base: "#2d303b", highlight: "#555b70", shadow: "#101114" }
+          : cueSkin.id === "neon_pulse"
+          ? { base: "#390059", highlight: "#00ffff", shadow: "#13001f" }
+          : { base: "#2d2d30", highlight: "#5e5e63", shadow: "#121214" };
+
+        const colorsButt = cueSkin.id === "golden_elite"
+          ? { base: "#e5a900", highlight: "#fffacf", shadow: "#5e4300" }
+          : cueSkin.id === "carbon_fiber"
+          ? { base: "#16171d", highlight: "#3c3e4a", shadow: "#07080a" }
+          : cueSkin.id === "neon_pulse"
+          ? { base: "#a300d9", highlight: "#f2ccff", shadow: "#2a0038" }
+          : { base: "#4d2c18", highlight: "#a1622b", shadow: "#1f1007" };
+
+        const colorsJoint = cueSkin.id === "golden_elite"
+          ? { base: "#ffd700", highlight: "#ffffff", shadow: "#4d3900" }
+          : cueSkin.id === "carbon_fiber"
+          ? { base: "#888c9d", highlight: "#bfc2db", shadow: "#333540" }
+          : cueSkin.id === "neon_pulse"
+          ? { base: "#ff007f", highlight: "#ffffff", shadow: "#800040" }
+          : { base: "#dddddd", highlight: "#ffffff", shadow: "#777777" };
+
+        const draw3DSegment = (x1: number, x2: number, w1: number, w2: number, colors: { base: string; highlight: string; shadow: string }) => {
+          ctx.beginPath();
+          ctx.moveTo(x1, -w1);
+          ctx.lineTo(x2, -w2);
+          ctx.lineTo(x2, w2);
+          ctx.lineTo(x1, w1);
+          ctx.closePath();
+
+          const maxW = Math.max(w1, w2);
+          const grad = ctx.createLinearGradient(0, -maxW, 0, maxW);
+          grad.addColorStop(0, colors.highlight);
+          grad.addColorStop(0.3, colors.base);
+          grad.addColorStop(0.7, colors.shadow);
+          grad.addColorStop(1, "rgba(0,0,0,0.85)");
+
+          ctx.fillStyle = grad;
+          ctx.fill();
+        };
+
+        // 1. Rubber bumper at very end of the stick
+        ctx.fillStyle = "#111111";
+        ctx.fillRect(-stickDist - 127, -2.9, 2, 5.8);
+
+        // 2. Butt sleeve / Cap
+        draw3DSegment(-stickDist - 125, -stickDist - 110, 2.9, 2.7, colorsButt);
+
+        // 3. Luxurious Linen Grip/Wrap
+        draw3DSegment(-stickDist - 110, -stickDist - 85, 2.7, 2.4, colorsWrap);
+
+        // 4. Premium Inlay Forearm
+        draw3DSegment(-stickDist - 85, -stickDist - 75, 2.4, 2.2, colorsForearm);
+
+        // 5. Polished Joint Collar Ring
+        draw3DSegment(-stickDist - 75, -stickDist - 71, 2.2, 2.1, colorsJoint);
+
+        // 6. Professional Tapered Shaft
+        draw3DSegment(-stickDist - 71, -stickDist - 4, 2.1, 1.3, colorsShaft);
+
+        // 7. High-gloss Ivory Ferrule + Leather Tip accents
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(-stickDist - 4, -1.3, 4, 2.6);
         ctx.fillStyle = "#5c7aff";
@@ -485,8 +627,67 @@ export function PoolTable({
       if (!stillMoving) {
         setSimulationActive(false);
         clearInterval(interval);
-        // Fire Turn End handler
-        onTurnComplete(tempBalls, localPocketed, false);
+
+        // Evaluate precise 8-ball rules foul status
+        let wasFoul = false;
+        let reason = "";
+
+        // A. Check for Scratch (Cue ball pocketed)
+        const cueBall = tempBalls.find((b) => b.type === BallType.CUE);
+        const cueScratch = !cueBall || cueBall.state === BallState.POCKETED;
+
+        if (cueScratch) {
+          wasFoul = true;
+          reason = "إسقاط الكرة البيضاء";
+        } else if (localFirstHit === null) {
+          // B. Check for hitting absolutely nothing
+          wasFoul = true;
+          reason = "لم يتم ضرب أي كرة بالكرة البيضاء";
+        } else {
+          // C. Check for hitting the wrong ball first
+          const firstHitBallObj = tempBalls.find((b) => b.id === localFirstHit);
+          if (firstHitBallObj) {
+            const shooterGroup = isMyTurn ? myBallGroup : opponentBallGroup;
+            
+            if (shooterGroup === "solids") {
+              if (firstHitBallObj.type === BallType.STRIPE) {
+                wasFoul = true;
+                reason = "لمس كرات الخصم (المقلمة) أولاً";
+              } else if (firstHitBallObj.id === 8) {
+                const remainingSolids = tempBalls.filter(
+                  (b) => b.state === BallState.ON_TABLE && b.type === BallType.SOLID && b.id !== 0 && b.id !== 8
+                ).length;
+                if (remainingSolids > 0) {
+                  wasFoul = true;
+                  reason = "لمس الكرة رقم 8 قبل إسقاط جميع كراتك الصلبة";
+                }
+              }
+            } else if (shooterGroup === "stripes") {
+              if (firstHitBallObj.type === BallType.SOLID) {
+                wasFoul = true;
+                reason = "لمس كرات الخصم (الصلبة) أولاً";
+              } else if (firstHitBallObj.id === 8) {
+                const remainingStripes = tempBalls.filter(
+                  (b) => b.state === BallState.ON_TABLE && b.type === BallType.STRIPE && b.id !== 0 && b.id !== 8
+                ).length;
+                if (remainingStripes > 0) {
+                  wasFoul = true;
+                  reason = "لمس الكرة رقم 8 قبل إسقاط جميع كراتك المقلمة";
+                }
+              }
+            } else {
+              // Undecided group - cannot hit 8-ball first
+              if (firstHitBallObj.id === 8) {
+                wasFoul = true;
+                reason = "لا يمكن ضرب الكرة رقم 8 أولاً بينما لا تزال اللعبة مفتوحة";
+              }
+            }
+          }
+        }
+
+        // Fire Turn End handler with complete foul feedback
+        onTurnComplete(tempBalls, localPocketed, wasFoul, reason);
+
         // Clear collision temp tracking
         setFirstHitBallId(null);
         setPocketedThisTurn([]);
@@ -886,58 +1087,95 @@ export function PoolTable({
           />
         </div>
 
-        {/* Charge power shot console */}
-        {isMyTurn && !isSimulationActive && !isAiTurnText && !ballInHandActive && (
-          <div className="flex flex-col items-center justify-center p-3 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-2xl w-full sm:w-44 md:w-48 lg:w-48 xl:w-56 text-center shrink-0">
-            <span className="text-xs font-semibold text-slate-400 mb-4 tracking-wider uppercase block">
-              عداد قوة الضربة
-            </span>
-            
-            {/* Charging Power Handle track bar */}
-            <div className="relative w-full h-6 flex items-center bg-slate-950 border border-slate-800 rounded-full overflow-hidden mb-5">
-              <div
-                className="absolute left-0 top-0 h-full transition-all duration-75"
-                style={{
-                  width: `${powerSlider}%`,
-                  background: `linear-gradient(90deg, #10b981 0%, #f59e0b ${Math.min(100, (powerSlider > 60 ? powerSlider : 60))}%, #ef4444 100%)`
-                }}
-              />
-              <span className="absolute w-full text-center text-2xs font-mono font-bold text-white drop-shadow">
-                {powerSlider}%
+        {/* Charge power shot console OR Placement confirmation console */}
+        {isMyTurn && !isSimulationActive && !isAiTurnText && (
+          ballInHandActive ? (
+            <div className="flex flex-col items-center justify-center p-3 sm:p-4 border border-cyan-500/20 bg-cyan-950/10 rounded-2xl w-full sm:w-44 md:w-48 lg:w-48 xl:w-56 text-center shrink-0">
+              <span className="text-xs font-semibold text-cyan-400 mb-2 tracking-wider uppercase block">
+                تأكيد وضع الكرة
               </span>
+              <p className="text-[10px] text-slate-300 mb-4 leading-relaxed">
+                اسحب الكرة البيضاء أو اضغط على الجانب الأيسر لتحديد مكانها المناسب على الطاولة، ثم اضغط على زر التأكيد للبدء بالتصويب واللعب.
+              </p>
+              
+              <button
+                id="confirm-placement-button"
+                onClick={() => {
+                  if (onBallsPlaced) {
+                    onBallsPlaced(balls);
+                  } else {
+                    setBallInHandActive(false);
+                  }
+                }}
+                className="flex items-center justify-center gap-2 w-full py-3 px-4 font-bold rounded-xl shadow-lg border bg-cyan-500 hover:bg-cyan-400 text-slate-950 border-cyan-400 shadow-cyan-500/10 active:scale-95 cursor-pointer transition-all"
+              >
+                <Sparkles className="h-4 w-4" />
+                تأكيد الموضع والتصويب
+              </button>
             </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center p-3 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-2xl w-full sm:w-44 md:w-48 lg:w-48 xl:w-56 text-center shrink-0">
+              <span className="text-xs font-semibold text-slate-400 mb-4 tracking-wider uppercase block">
+                عداد قوة الضربة
+              </span>
+              
+              {/* Charging Power Handle track bar */}
+              <div className="relative w-full h-6 flex items-center bg-slate-950 border border-slate-800 rounded-full overflow-hidden mb-5">
+                <div
+                  className="absolute left-0 top-0 h-full transition-all duration-75"
+                  style={{
+                    width: `${powerSlider}%`,
+                    background: `linear-gradient(90deg, #10b981 0%, #f59e0b ${Math.min(100, (powerSlider > 60 ? powerSlider : 60))}%, #ef4444 100%)`
+                  }}
+                />
+                <span className="absolute w-full text-center text-2xs font-mono font-bold text-white drop-shadow">
+                  {powerSlider}%
+                </span>
+              </div>
 
-            <input
-              id="cue-power-input"
-              type="range"
-              min="0"
-              max="100"
-              value={powerSlider}
-              onChange={(e) => setPowerSlider(Number(e.target.value))}
-              className="w-full accent-emerald-500 bg-slate-950 h-2 rounded-lg cursor-pointer appearance-none mb-5"
-            />
+              <input
+                id="cue-power-input"
+                type="range"
+                min="0"
+                max="100"
+                value={powerSlider}
+                onChange={(e) => setPowerSlider(Number(e.target.value))}
+                className="w-full accent-emerald-500 bg-slate-950 h-2 rounded-lg cursor-pointer appearance-none mb-5"
+              />
 
-            <button
-              id="strike-action-button"
-              disabled={powerSlider <= 0}
-              onClick={handleStrikeTrigger}
-              className={`flex items-center justify-center gap-2 w-full py-3 px-4 font-bold rounded-xl shadow-lg border transition-all ${
-                powerSlider > 0
-                  ? "bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-400 shadow-emerald-500/10 active:scale-95 cursor-pointer"
-                  : "bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed"
-              }`}
-            >
-              <Power className="h-4 w-4" />
-              إطلاق الضربة!
-            </button>
-          </div>
+              <button
+                id="strike-action-button"
+                disabled={powerSlider <= 0}
+                onClick={handleStrikeTrigger}
+                className={`flex items-center justify-center gap-2 w-full py-3 px-4 font-bold rounded-xl shadow-lg border transition-all ${
+                  powerSlider > 0
+                    ? "bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-400 shadow-emerald-500/10 active:scale-95 cursor-pointer"
+                    : "bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed"
+                }`}
+              >
+                <Power className="h-4 w-4" />
+                إطلاق الضربة!
+              </button>
+            </div>
+          )
         )}
       </div>
 
       {/* Pocket Status List of Remaining Objects */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 w-full max-w-5xl">
-        <div className="p-3 border border-slate-900 bg-slate-900/30 rounded-xl text-center">
-          <span className="text-2xs font-mono text-slate-500 block">كرات المجموعة الصلبة</span>
+        <div className="p-3 border border-slate-900 bg-slate-900/30 rounded-xl text-center flex flex-col justify-between">
+          <div>
+            <span className="text-2xs font-mono text-slate-500 block">كرات المجموعة الصلبة</span>
+            {(() => {
+              const remainingSolids = balls.filter((b) => b.id >= 1 && b.id <= 7 && b.state === BallState.ON_TABLE).length;
+              const pocketedSolids = 7 - remainingSolids;
+              return (
+                <span className="text-[10px] text-emerald-400 font-bold block mb-1">
+                  المتبقي: {remainingSolids} | المسقطة: {pocketedSolids}
+                </span>
+              );
+            })()}
+          </div>
           <div className="flex justify-center gap-1 mt-1 flex-wrap">
             {[1, 2, 3, 4, 5, 6, 7].map((num) => {
               const present = balls.some((b) => b.id === num && b.state === BallState.ON_TABLE);
@@ -956,8 +1194,19 @@ export function PoolTable({
           </div>
         </div>
 
-        <div className="p-3 border border-slate-900 bg-slate-900/30 rounded-xl text-center">
-          <span className="text-2xs font-mono text-slate-500 block">كرات المجموعة المقلمة</span>
+        <div className="p-3 border border-slate-900 bg-slate-900/30 rounded-xl text-center flex flex-col justify-between">
+          <div>
+            <span className="text-2xs font-mono text-slate-500 block">كرات المجموعة المقلمة</span>
+            {(() => {
+              const remainingStripes = balls.filter((b) => b.id >= 9 && b.id <= 15 && b.state === BallState.ON_TABLE).length;
+              const pocketedStripes = 7 - remainingStripes;
+              return (
+                <span className="text-[10px] text-emerald-400 font-bold block mb-1">
+                  المتبقي: {remainingStripes} | المسقطة: {pocketedStripes}
+                </span>
+              );
+            })()}
+          </div>
           <div className="flex justify-center gap-1 mt-1 flex-wrap">
             {[9, 10, 11, 12, 13, 14, 15].map((num) => {
               const present = balls.some((b) => b.id === num && b.state === BallState.ON_TABLE);

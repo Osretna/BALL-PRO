@@ -31,31 +31,13 @@ service cloud.firestore {
     // Player profiles rules
     match /profiles/{userId} {
       allow read: if isSignedIn();
-      allow create: if isOwner(userId) 
-        && incoming().userId == request.auth.uid
-        && incoming().displayName is string
-        && incoming().displayName.size() <= 50
-        && incoming().xp == 0
-        && incoming().level == 1
-        && incoming().coins == 500
-        && incoming().playedGames == 0
-        && incoming().wonGames == 0;
-      
-      allow update: if isOwner(userId)
-        && incoming().userId == request.auth.uid
-        && incoming().displayName is string
-        && incoming().displayName.size() <= 50
-        && incoming().xp is int
-        && incoming().xp >= existing().xp
-        && incoming().level is int
-        && incoming().coins is int
-        && (
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'displayName', 'photoURL', 'xp', 'level', 'coins', 
-            'playedGames', 'wonGames', 'equippedCue', 'equippedTheme', 
-            'unlockedCues', 'unlockedThemes'
-          ])
-        );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+    }
+
+    // Deposit Requests Rules
+    match /deposit_requests/{requestId} {
+      allow read, write: if isSignedIn();
     }
 
     // Room matches rules

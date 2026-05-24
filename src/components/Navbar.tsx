@@ -4,12 +4,12 @@
  */
 
 import { PlayerStats } from "../types";
-import { LogOut, Palette, Trophy, PlayCircle, Coins, LogIn, Swords, Megaphone } from "lucide-react";
+import { LogOut, Palette, Trophy, PlayCircle, Coins, LogIn, Swords, Megaphone, ShoppingBag, ShieldCheck } from "lucide-react";
 
 interface NavbarProps {
   playerStats: PlayerStats;
-  currentTab: "lobby" | "customizer" | "dashboard" | "ads";
-  setTab: (tab: "lobby" | "customizer" | "dashboard" | "ads") => void;
+  currentTab: "lobby" | "customizer" | "dashboard" | "ads" | "shop" | "admin";
+  setTab: (tab: "lobby" | "customizer" | "dashboard" | "ads" | "shop" | "admin") => void;
   user: any;
   onLoginTrigger: () => void;
   onLogoutTrigger: () => void;
@@ -84,14 +84,38 @@ export function Navbar({
             <button
               id="tab-ads-btn"
               onClick={() => setTab("ads")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
                 currentTab === "ads"
-                  ? "bg-emerald-900/30 text-emerald-400 border border-emerald-500/20"
+                  ? "bg-slate-900 text-slate-100"
                   : "text-slate-400 hover:text-slate-250 hover:bg-slate-900/20"
               }`}
             >
-              <Megaphone className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
-              شحن الذهب 🎁
+              <Megaphone className="h-3.5 w-3.5 text-amber-500" />
+              ذهب مجاني 🎁
+            </button>
+            <button
+              id="tab-shop-btn"
+              onClick={() => setTab("shop")}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                currentTab === "shop"
+                  ? "bg-emerald-950 text-emerald-400 border border-emerald-500/20"
+                  : "text-slate-400 hover:text-slate-250 hover:bg-slate-900/20"
+              }`}
+            >
+              <ShoppingBag className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+              شحن الباقات 💳
+            </button>
+            <button
+              id="tab-admin-btn"
+              onClick={() => setTab("admin")}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                currentTab === "admin"
+                  ? "bg-cyan-950 text-cyan-400 border border-cyan-500/20"
+                  : "text-slate-400 hover:text-slate-250 hover:bg-slate-900/20"
+              }`}
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-cyan-500" />
+              لوحة الإدارة ⚙️
             </button>
           </nav>
         )}
@@ -177,13 +201,22 @@ export function Navbar({
             الإحصائيات
           </button>
           <button
-            onClick={() => setTab("ads")}
+            onClick={() => setTab("shop")}
             className={`flex flex-col items-center p-1.5 text-3xs font-semibold gap-1 ${
-              currentTab === "ads" ? "text-emerald-500 animate-pulse font-bold" : "text-slate-500"
+              currentTab === "shop" ? "text-emerald-500 font-bold" : "text-slate-500"
             }`}
           >
-            <Megaphone className="h-4.5 w-4.5" />
-            شحن الذهب
+            <ShoppingBag className="h-4 w-4" />
+            الشحن 💰
+          </button>
+          <button
+            onClick={() => setTab("admin")}
+            className={`flex flex-col items-center p-1.5 text-3xs font-semibold gap-1 ${
+              currentTab === "admin" ? "text-cyan-400 font-bold" : "text-slate-500"
+            }`}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            الإدارة ⚙️
           </button>
         </div>
       )}
