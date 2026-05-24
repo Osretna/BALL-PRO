@@ -18,7 +18,7 @@ import {
   getDocFromServer,
   Firestore
 } from "firebase/firestore";
-import firebaseConfig from "../firebase-applet-config.json";
+import firebaseConfig from "../../firebase-applet-config.json";
 
 export enum OperationType {
   CREATE = 'create',
@@ -43,7 +43,15 @@ export interface FirestoreErrorInfo {
 
 // Check if actual configuration has been loaded or if the app runs in Local Sandbox.
 export const isFirebaseConfigured =
-  firebaseConfig.apiKey && firebaseConfig.apiKey !== "MISSING_API_KEY";
+  !!(firebaseConfig.apiKey && firebaseConfig.apiKey !== "MISSING_API_KEY");
+
+console.log("Firebase config check debug:", {
+  isFirebaseConfigured,
+  hasApiKey: !!firebaseConfig.apiKey,
+  apiKey: firebaseConfig.apiKey ? `${firebaseConfig.apiKey.substring(0, 5)}...` : null,
+  projectId: firebaseConfig.projectId,
+  databaseId: firebaseConfig.firestoreDatabaseId
+});
 
 let app;
 let db: Firestore | null = null;
@@ -52,10 +60,12 @@ let googleProvider: any = null;
 
 if (isFirebaseConfigured) {
   try {
+    console.log("Attempting to initialize Firebase...");
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
     auth = getAuth(app);
     googleProvider = new GoogleAuthProvider();
+    console.log("Firebase initialized successfully. auth status:", !!auth);
 
     // Verify database connection asynchronously
     getDocFromServer(doc(db, "test", "connection")).catch((err) => {
@@ -66,6 +76,8 @@ if (isFirebaseConfigured) {
   } catch (error) {
     console.error("Firebase Initialization Failed: ", error);
   }
+} else {
+  console.warn("Firebase is NOT configured status. Standard offline mode active.");
 }
 
 export { db, auth, googleProvider };
