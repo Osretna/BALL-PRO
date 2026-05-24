@@ -110,6 +110,8 @@ export default function App() {
   const [myBallGroup, setMyBallGroup] = useState<"solids" | "stripes" | "undecided">("undecided");
   const [turnStatusText, setTurnStatusText] = useState<string>("دورك للتصويب! اسحب العصا ثم اضرب.");
   const [matchWinner, setMatchWinner] = useState<string | null>(null);
+  const [lastMatchEarnedCoins, setLastMatchEarnedCoins] = useState<number>(0);
+  const [lastMatchEarnedXp, setLastMatchEarnedXp] = useState<number>(0);
 
   // Room synchronization for Online Multiplayer
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
@@ -183,23 +185,7 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (parsedUser) => {
       if (parsedUser) {
         setCurrentUser(parsedUser);
-        const cloudStats = await fetchOrCreateProfile(parsedUser);
-        if (cloudStats) {
-          saveStatsBackupLocally({
-            userId: cloudStats.userId,
-            displayName: cloudStats.displayName,
-            photoURL: cloudStats.photoURL,
-            xp: cloudStats.xp,
-            level: cloudStats.level,
-            coins: cloudStats.coins,
-            playedGames: cloudStats.playedGames,
-            wonGames: cloudStats.wonGames,
-            equippedCue: cloudStats.equippedCue,
-            equippedTheme: cloudStats.equippedTheme,
-            unlockedCues: cloudStats.unlockedCues || ["classic_wood"],
-            unlockedThemes: cloudStats.unlockedThemes || ["billiard_green"]
-          });
-        }
+        await fetchOrCreateProfile(parsedUser);
       } else {
         setCurrentUser(null);
         // Fall back to local storage profile if logged out
@@ -212,6 +198,39 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  // Real-time synchronizer for logged-in user's profile coins/XP directly from Firestore
+  useEffect(() => {
+    if (!currentUser || !db) return;
+
+    const pathStr = `profiles/${currentUser.uid}`;
+    const unsubscribe = onSnapshot(
+      doc(db, "profiles", currentUser.uid),
+      (docSnap) => {
+        if (!docSnap.exists()) return;
+        const cloudStats = docSnap.data();
+        saveStatsBackupLocally({
+          userId: cloudStats.userId || currentUser.uid,
+          displayName: cloudStats.displayName || currentUser.displayName || "لاعب بلياردو",
+          photoURL: cloudStats.photoURL || currentUser.photoURL || "",
+          xp: cloudStats.xp ?? 0,
+          level: cloudStats.level ?? 1,
+          coins: cloudStats.coins ?? 500,
+          playedGames: cloudStats.playedGames ?? 0,
+          wonGames: cloudStats.wonGames ?? 0,
+          equippedCue: cloudStats.equippedCue || "classic_wood",
+          equippedTheme: cloudStats.equippedTheme || "billiard_green",
+          unlockedCues: cloudStats.unlockedCues || ["classic_wood"],
+          unlockedThemes: cloudStats.unlockedThemes || ["billiard_green"]
+        });
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, pathStr);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   // Online Multiplayer Firestore listener
   useEffect(() => {
@@ -237,8 +256,41 @@ export default function App() {
         }
 
         // Trigger winner updates
-        if (data.status === "finished") {
+        if (data.status === "finished" && !matchWinner) {
+          const isWinner = data.winnerId === currentUser?.uid;
+          const coinsGained = isWinner ? 150 : -150;
+          const xpGained = isWinner ? 300 : 50;
+
           setMatchWinner(data.winnerId);
+          setLastMatchEarnedCoins(coinsGained);
+          setLastMatchEarnedXp(xpGained);
+
+          if (db && currentUser) {
+            getDoc(doc(db, "profiles", currentUser.uid)).then((pSnap) => {
+              if (pSnap.exists()) {
+                const currentProfile = pSnap.data();
+                const pCoins = currentProfile.coins ?? 500;
+                const pXp = currentProfile.xp ?? 0;
+                const pLevel = currentProfile.level ?? 1;
+                const pPlayed = currentProfile.playedGames ?? 0;
+                const pWon = currentProfile.wonGames ?? 0;
+
+                const nextXp = pXp + xpGained;
+                const nextLevel = Math.max(pLevel, Math.floor(nextXp / (pLevel * 500)) + 1);
+                const finalCoins = Math.max(0, pCoins + coinsGained);
+
+                updateProfile(currentUser.uid, {
+                  xp: nextXp,
+                  level: nextLevel,
+                  coins: finalCoins,
+                  playedGames: pPlayed + 1,
+                  wonGames: pWon + (isWinner ? 1 : 0)
+                }).then(() => {
+                  console.log("Successfully auto-updated profile rewards on match finish snapshot");
+                });
+              }
+            }).catch((err) => console.error("Error updating own profile on match end snapshot:", err));
+          }
         }
 
         // Track turn synchronizations
@@ -549,6 +601,9 @@ export default function App() {
       earnedXp = isMeVictory ? 150 : 60;
     }
 
+    setLastMatchEarnedCoins(earnedCoins);
+    setLastMatchEarnedXp(earnedXp);
+
     const nextXp = playerStats.xp + earnedXp;
     const nextLevel = Math.max(playerStats.level, Math.floor(nextXp / (playerStats.level * 500)) + 1);
     
@@ -575,34 +630,6 @@ export default function App() {
         playedGames: updatedStats.playedGames,
         wonGames: updatedStats.wonGames
       });
-    }
-
-    // ONLINE MULTIPLAYER DIRECT MULTI-USER COIN TRANSFER
-    if (selectedMode === GameMode.ONLINE_MULTIPLAYER && currentUser && roomDoc && db) {
-      const opponentId = currentUser.uid === roomDoc.hostId ? roomDoc.guestId : roomDoc.hostId;
-      if (opponentId && opponentId !== "") {
-        try {
-          const oppRef = doc(db, "profiles", opponentId);
-          const oppSnap = await getDoc(oppRef);
-          if (oppSnap.exists()) {
-            const oppData = oppSnap.data();
-            const currentOppCoins = oppData.coins ?? 500;
-            
-            // If I won, host/guest opponent loses 150 gold. If I lost, they gain 150 gold.
-            const nextOppCoins = isMeVictory 
-              ? Math.max(0, currentOppCoins - 150) 
-              : currentOppCoins + 150;
-
-            await updateDoc(oppRef, {
-              coins: nextOppCoins,
-              updatedAt: new Date().toISOString()
-            });
-            console.log(`Successfully completed balance wager of 150 coins on opponent (${opponentId}). Next: ${nextOppCoins}`);
-          }
-        } catch (err) {
-          console.error("Opponent wager coins remote sync failure", err);
-        }
-      }
     }
 
     // Synchronize Firestore status if we match over internet
@@ -996,12 +1023,16 @@ export default function App() {
 
               <div className="p-4 bg-slate-950 border border-slate-900 rounded-2xl flex justify-around items-center divide-x divide-slate-900 gap-2">
                 <div>
-                  <span className="text-2xs font-mono text-slate-500 block mb-1">الجوائز المكتسبة</span>
-                  <span className="text-sm font-bold text-amber-500">+150 ذهبة</span>
+                  <span className="text-2xs font-mono text-slate-500 block mb-1">الرصيد</span>
+                  <span className={`text-sm font-bold ${lastMatchEarnedCoins >= 0 ? "text-amber-500" : "text-rose-500"}`}>
+                    {lastMatchEarnedCoins >= 0 ? `+${lastMatchEarnedCoins}` : lastMatchEarnedCoins} ذهبة
+                  </span>
                 </div>
-                <div className="pl-4">
-                  <span className="text-2xs font-mono text-slate-500 block mb-1">حجم الخبرة</span>
-                  <span className="text-sm font-bold text-indigo-400">+250 XP</span>
+                <div className="pl-4 border-l border-slate-900">
+                  <span className="text-2xs font-mono text-slate-500 block mb-1 font-sans">حجم الخبرة</span>
+                  <span className="text-sm font-bold text-indigo-400">
+                    +{lastMatchEarnedXp} XP
+                  </span>
                 </div>
               </div>
 
