@@ -514,7 +514,7 @@ export default function App() {
   };
 
   // Declare match winner rewards payouts
-  const declareWinner = (winnerId: string) => {
+  const declareWinner = async (winnerId: string) => {
     setMatchWinner(winnerId);
     setTurnStatusText("لقد انتهت المواجهة التاريخية بنجاح!");
 
@@ -523,18 +523,43 @@ export default function App() {
     if (selectedMode === GameMode.PASS_LOGIC && winnerId === "player_1") isMeVictory = true;
     if (selectedMode === GameMode.ONLINE_MULTIPLAYER && winnerId === currentUser?.uid) isMeVictory = true;
 
-    // Award user some XP Coins on victory list
-    const earnedCoins = isMeVictory ? 150 : 30;
-    const earnedXp = isMeVictory ? 250 : 80;
+    // Stake calculations
+    let earnedCoins = 30;
+    let earnedXp = 80;
+
+    if (selectedMode === GameMode.ONLINE_MULTIPLAYER) {
+      if (isMeVictory) {
+        earnedCoins = 150; // Stake wins 150 gold
+        earnedXp = 300;
+      } else {
+        earnedCoins = -150; // Stake loses 150 gold
+        earnedXp = 50;
+      }
+    } else if (selectedMode === GameMode.VS_AI) {
+      if (isMeVictory) {
+        earnedCoins = 100; // Win 100 against AI
+        earnedXp = 200;
+      } else {
+        earnedCoins = -50; // Lose 50 against AI
+        earnedXp = 40;
+      }
+    } else {
+      // Practice or Pass-and-play
+      earnedCoins = isMeVictory ? 100 : 30;
+      earnedXp = isMeVictory ? 150 : 60;
+    }
 
     const nextXp = playerStats.xp + earnedXp;
     const nextLevel = Math.max(playerStats.level, Math.floor(nextXp / (playerStats.level * 500)) + 1);
+    
+    // Prevent client-side coins from dropping below 0
+    const finalCoins = Math.max(0, playerStats.coins + earnedCoins);
 
     const updatedStats: PlayerStats = {
       ...playerStats,
       xp: nextXp,
       level: nextLevel,
-      coins: playerStats.coins + earnedCoins,
+      coins: finalCoins,
       playedGames: playerStats.playedGames + 1,
       wonGames: playerStats.wonGames + (isMeVictory ? 1 : 0)
     };
@@ -550,6 +575,34 @@ export default function App() {
         playedGames: updatedStats.playedGames,
         wonGames: updatedStats.wonGames
       });
+    }
+
+    // ONLINE MULTIPLAYER DIRECT MULTI-USER COIN TRANSFER
+    if (selectedMode === GameMode.ONLINE_MULTIPLAYER && currentUser && roomDoc && db) {
+      const opponentId = currentUser.uid === roomDoc.hostId ? roomDoc.guestId : roomDoc.hostId;
+      if (opponentId && opponentId !== "") {
+        try {
+          const oppRef = doc(db, "profiles", opponentId);
+          const oppSnap = await getDoc(oppRef);
+          if (oppSnap.exists()) {
+            const oppData = oppSnap.data();
+            const currentOppCoins = oppData.coins ?? 500;
+            
+            // If I won, host/guest opponent loses 150 gold. If I lost, they gain 150 gold.
+            const nextOppCoins = isMeVictory 
+              ? Math.max(0, currentOppCoins - 150) 
+              : currentOppCoins + 150;
+
+            await updateDoc(oppRef, {
+              coins: nextOppCoins,
+              updatedAt: new Date().toISOString()
+            });
+            console.log(`Successfully completed balance wager of 150 coins on opponent (${opponentId}). Next: ${nextOppCoins}`);
+          }
+        } catch (err) {
+          console.error("Opponent wager coins remote sync failure", err);
+        }
+      }
     }
 
     // Synchronize Firestore status if we match over internet

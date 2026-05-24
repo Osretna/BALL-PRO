@@ -167,7 +167,7 @@ export function AdminPanel({ playerStats, user }: AdminPanelProps) {
               <input
                 type="text"
                 required
-                placeholder="اسم المستخدم (admin)"
+                placeholder="اسم المستخدم"
                 value={usernameInput}
                 onChange={(e) => setUsernameInput(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-900 focus:border-cyan-500/50 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 outline-none transition"
@@ -179,7 +179,7 @@ export function AdminPanel({ playerStats, user }: AdminPanelProps) {
               <input
                 type="password"
                 required
-                placeholder="كلمة المرور (admin1234)"
+                placeholder="كلمة المرور"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-900 focus:border-cyan-500/50 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 outline-none transition"

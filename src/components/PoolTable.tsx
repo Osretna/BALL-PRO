@@ -817,57 +817,58 @@ export function PoolTable({
 
     // A: Ball In Hand Active -> Click anywhere to relocate cue ball
     if (ballInHandActive) {
-      const validMinX = CUSHION_WIDTH + BALL_RADIUS + 3;
-      const validMaxX = TABLE_WIDTH - CUSHION_WIDTH - BALL_RADIUS - 3;
-      const validMinY = CUSHION_WIDTH + BALL_RADIUS + 3;
-      const validMaxY = TABLE_HEIGHT - CUSHION_WIDTH - BALL_RADIUS - 3;
+      if (isStart || e.buttons === 1) {
+        const validMinX = CUSHION_WIDTH + BALL_RADIUS + 3;
+        const validMaxX = TABLE_WIDTH - CUSHION_WIDTH - BALL_RADIUS - 3;
+        const validMinY = CUSHION_WIDTH + BALL_RADIUS + 3;
+        const validMaxY = TABLE_HEIGHT - CUSHION_WIDTH - BALL_RADIUS - 3;
 
-      let targetX = Math.max(validMinX, Math.min(validMaxX, clickX));
-      let targetY = Math.max(validMinY, Math.min(validMaxY, clickY));
+        let targetX = Math.max(validMinX, Math.min(validMaxX, clickX));
+        let targetY = Math.max(validMinY, Math.min(validMaxY, clickY));
 
-      const isBehindHeadString = targetX <= 250;
-      if (!isBehindHeadString && mode !== GameMode.SOLO_PRACTICE) {
-        targetX = Math.min(250, targetX);
-      }
-
-      let overlaps = false;
-      for (const obj of balls) {
-        if (obj.id === 0 || obj.state !== BallState.ON_TABLE) continue;
-        const d = Math.sqrt((obj.x - targetX) ** 2 + (obj.y - targetY) ** 2);
-        if (d < BALL_RADIUS * 2) {
-          overlaps = true;
-          break;
+        const isBehindHeadString = targetX <= 250;
+        if (!isBehindHeadString && mode !== GameMode.SOLO_PRACTICE) {
+          targetX = Math.min(250, targetX);
         }
-      }
 
-      if (!overlaps) {
-        setBalls((current) =>
-          current.map((b) => (b.id === 0 ? { ...b, x: targetX, y: targetY, vx: 0, vy: 0 } : b))
-        );
-      } else {
-        setStatusNotification("لا يمكن وضع الكرة فوق كرة أخرى!");
-        setTimeout(() => setStatusNotification(""), 2000);
+        let overlaps = false;
+        for (const obj of balls) {
+          if (obj.id === 0 || obj.state !== BallState.ON_TABLE) continue;
+          const d = Math.sqrt((obj.x - targetX) ** 2 + (obj.y - targetY) ** 2);
+          if (d < BALL_RADIUS * 2) {
+            overlaps = true;
+            break;
+          }
+        }
+
+        if (!overlaps) {
+          setBalls((current) =>
+            current.map((b) => (b.id === 0 ? { ...b, x: targetX, y: targetY, vx: 0, vy: 0 } : b))
+          );
+        } else {
+          setStatusNotification("لا يمكن وضع الكرة فوق كرة أخرى!");
+          setTimeout(() => setStatusNotification(""), 2000);
+        }
       }
       return;
     }
 
     // B: Traditional drag and grab-stick swivel calculations
     const isDrag = e.buttons === 1;
-    let grabStick = false;
+    if (!isDrag && !isStart) {
+      // Ignore hover-only mouse move events completely to align desktop feeling with mobile!
+      return;
+    }
 
-    if (isDrag) {
-      if (isStart) {
-        const dist = isTouchNearStick(clickX, clickY, cueBall, cueStick.angle);
-        grabStick = dist < 45;
-        draggingStickRef.current = grabStick;
-        setIsStickGrabbed(grabStick);
-      } else {
-        grabStick = draggingStickRef.current;
-      }
-    } else {
+    let grabStick = false;
+    if (isStart) {
       const dist = isTouchNearStick(clickX, clickY, cueBall, cueStick.angle);
-      grabStick = dist < 45;
+      // Extra forgiving grab distance of 65px for supreme desktop mouse precision
+      grabStick = dist < 65;
       draggingStickRef.current = grabStick;
+      setIsStickGrabbed(grabStick);
+    } else {
+      grabStick = draggingStickRef.current;
     }
 
     let finalAngle = cueStick.angle;
@@ -1071,6 +1072,10 @@ export function PoolTable({
             onMouseMove={(e) => handleCanvasInteraction(e, false)}
             onMouseDown={(e) => handleCanvasInteraction(e, true)}
             onMouseUp={() => {
+              setIsStickGrabbed(false);
+              draggingStickRef.current = false;
+            }}
+            onMouseLeave={() => {
               setIsStickGrabbed(false);
               draggingStickRef.current = false;
             }}
