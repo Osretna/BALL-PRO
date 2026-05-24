@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Player profiles rules
+    match /profiles/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) 
+        && incoming().userId == request.auth.uid
+        && incoming().displayName is string
+        && incoming().displayName.size() <= 50
+        && incoming().xp == 0
+        && incoming().level == 1
+        && incoming().coins == 500
+        && incoming().playedGames == 0
+        && incoming().wonGames == 0;
+      
+      allow update: if isOwner(userId)
+        && incoming().userId == request.auth.uid
+        && incoming().displayName is string
+        && incoming().displayName.size() <= 50
+        && incoming().xp is int
+        && incoming().xp >= existing().xp
+        && incoming().level is int
+        && incoming().coins is int
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'photoURL', 'xp', 'level', 'coins', 
+            'playedGames', 'wonGames', 'equippedCue', 'equippedTheme', 
+            'unlockedCues', 'unlockedThemes'
+          ])
+        );
+    }
+
+    // Room matches rules
+    match /rooms/{roomId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(roomId)
+        && incoming().hostId == request.auth.uid
+        && incoming().status == 'waiting';
+
+      allow update: if isSignedIn() && (
+        // Action 1: Guest enters lobby
+        (existing().status == 'waiting' 
+          && incoming().guestId == request.auth.uid 
+          && incoming().status == 'playing'
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'guestId', 'guestName', 'guestPhoto', 'status', 'updatedAt', 'turn', 'turnExpiresAt'
+          ])
+        ) ||
+        // Action 2: Play Turn / Submit ball states / Resolve fouls
+        (existing().status == 'playing'
+          && (request.auth.uid == existing().hostId || request.auth.uid == existing().guestId)
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'ballsState', 'turn', 'turnExpiresAt', 'lastShotBy', 'hostBallGroup', 
+            'guestBallGroup', 'foulOccurred', 'firstBallPocketedThisTurn', 'status', 'winnerId', 'updatedAt'
+          ])
+        )
+      );
+
+      // Chat Messages inside Rooms
+      match /messages/{messageId} {
+        allow read: if isSignedIn() 
+          && (get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId == request.auth.uid 
+              || get(/databases/$(database)/documents/rooms/$(roomId)).data.guestId == request.auth.uid);
+
+        allow create: if isSignedIn()
+          && isValidId(messageId)
+          && incoming().senderId == request.auth.uid
+          && (get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId == request.auth.uid 
+              || get(/databases/$(database)/documents/rooms/$(roomId)).data.guestId == request.auth.uid);
+      }
+    }
+  }
+}

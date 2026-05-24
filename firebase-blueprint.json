@@ -1,0 +1,197 @@
+{
+  "entities": {
+    "profile": {
+      "title": "Player Profile",
+      "description": "User profile with level, coins, and customization options.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The unique user ID matching their Firebase Auth UID."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The name shown in matches."
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "The avatar image URL."
+        },
+        "xp": {
+          "type": "integer",
+          "description": "Current experience points."
+        },
+        "level": {
+          "type": "integer",
+          "description": "Rank level of the player."
+        },
+        "coins": {
+          "type": "integer",
+          "description": "Gold coins loaded."
+        },
+        "playedGames": {
+          "type": "integer",
+          "description": "Total matches played."
+        },
+        "wonGames": {
+          "type": "integer",
+          "description": "Total mathches won."
+        },
+        "equippedCue": {
+          "type": "string",
+          "description": "The visual design of the player's stick."
+        },
+        "equippedTheme": {
+          "type": "string",
+          "description": "The visual color palette of the table."
+        },
+        "unlockedCues": {
+          "type": "string",
+          "description": "Comma-separated list or JSON array of cue IDs available for stick customization."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the profile was last updated."
+        }
+      },
+      "required": ["userId", "displayName", "xp", "level", "coins", "playedGames", "wonGames", "equippedCue", "equippedTheme"]
+    },
+    "room": {
+      "title": "Match Game Room",
+      "description": "The active billiard match instance between two players.",
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "type": "string",
+          "description": "Unique game room code (6-digit alphanumeric or firestore ID)."
+        },
+        "hostId": {
+          "type": "string",
+          "description": "User ID of the player setting up the room."
+        },
+        "hostName": {
+          "type": "string",
+          "description": "Display name of the host."
+        },
+        "hostPhoto": {
+          "type": "string",
+          "description": "Photo URL of the host."
+        },
+        "guestId": {
+          "type": "string",
+          "description": "User ID of the opponent, or null if waiting for someone to join."
+        },
+        "guestName": {
+          "type": "string",
+          "description": "Display name of the guest."
+        },
+        "guestPhoto": {
+          "type": "string",
+          "description": "Photo URL of the guest."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["waiting", "playing", "finished"],
+          "description": "Current gameplay status."
+        },
+        "winnerId": {
+          "type": "string",
+          "description": "The user ID of the victorious player."
+        },
+        "turn": {
+          "type": "string",
+          "description": "The user ID of the player whose turn it currently is."
+        },
+        "turnExpiresAt": {
+          "type": "number",
+          "description": "Epoch timestamp when the current turn timing expires."
+        },
+        "lastShotBy": {
+          "type": "string",
+          "description": "User ID of the player who performed the last shot."
+        },
+        "ballsState": {
+          "type": "string",
+          "description": "Serialized JSON array representing position and state of all 16 balls on the table."
+        },
+        "hostBallGroup": {
+          "type": "string",
+          "enum": ["solids", "stripes", "undecided"],
+          "description": "The group of balls (solids or stripes) assigned to the host."
+        },
+        "guestBallGroup": {
+          "type": "string",
+          "enum": ["solids", "stripes", "undecided"],
+          "description": "The group of balls (solids or stripes) assigned to the guest."
+        },
+        "firstBallPocketedThisTurn": {
+          "type": "string",
+          "description": "Optional info on balls pocketed during current turn to resolve groupings."
+        },
+        "foulOccurred": {
+          "type": "boolean",
+          "description": "Indicates if the last action resulted in a foul (giving ball-in-hand to the next player)."
+        },
+        "tableFeltColor": {
+          "type": "string",
+          "description": "The customized fabric color for this table session."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the lobby room was initialized."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The last timestamp synchronization of gameplay state."
+        }
+      },
+      "required": ["roomId", "hostId", "hostName", "status", "turn", "ballsState", "hostBallGroup", "guestBallGroup"]
+    },
+    "chat": {
+      "title": "Chat Message",
+      "description": "Message context sent during games.",
+      "type": "object",
+      "properties": {
+        "messageId": {
+          "type": "string"
+        },
+        "senderId": {
+          "type": "string"
+        },
+        "senderName": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["messageId", "senderId", "senderName", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "profiles/{userId}": {
+      "schema": "profile",
+      "description": "Stores user statistics, levels, customized themes, and achievements."
+    },
+    "rooms/{roomId}": {
+      "schema": "room",
+      "description": "Synchronizes current active multiplayer billiard match instances and table layout state."
+    },
+    "rooms/{roomId}/messages/{messageId}": {
+      "schema": "chat",
+      "description": "Instant chat logs exchanged between competing players on matching billiard tables."
+    }
+  }
+}
