@@ -80,7 +80,7 @@ if (isFirebaseConfigured) {
   console.warn("Firebase is NOT configured status. Standard offline mode active.");
 }
 
-export { db, auth, googleProvider };
+export { db, auth, googleProvider, firebaseConfig };
 
 /**
  * Mandatory Error Handler adhering strictly to Section 3 of the Firebase integration guidlines.

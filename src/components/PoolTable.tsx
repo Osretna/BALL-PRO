@@ -527,15 +527,16 @@ export function PoolTable({
     setSimulationActive(true);
   };
 
-  // Mouse drag listeners to rotate aiming angle
-  const handleCanvasInteraction = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const draggingStickRef = useRef<boolean>(false);
+
+  // Mouse interaction listener supporting accurate aiming relative to cue ball and stick
+  const handleCanvasInteraction = (e: React.MouseEvent<HTMLCanvasElement>, isStart: boolean = false) => {
     if (!isMyTurn || isSimulationActive || isAiTurnText) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    // Support responsive mapping scale adjustments
     const clickX = ((e.clientX - rect.left) / rect.width) * TABLE_WIDTH;
     const clickY = ((e.clientY - rect.top) / rect.height) * TABLE_HEIGHT;
 
@@ -544,7 +545,6 @@ export function PoolTable({
 
     // A: Ball In Hand Active -> Click anywhere to relocate cue ball
     if (ballInHandActive) {
-      // Restrict coordinate inside cushion zones safely
       const validMinX = CUSHION_WIDTH + BALL_RADIUS + 3;
       const validMaxX = TABLE_WIDTH - CUSHION_WIDTH - BALL_RADIUS - 3;
       const validMinY = CUSHION_WIDTH + BALL_RADIUS + 3;
@@ -553,14 +553,11 @@ export function PoolTable({
       let targetX = Math.max(validMinX, Math.min(validMaxX, clickX));
       let targetY = Math.max(validMinY, Math.min(validMaxY, clickY));
 
-      // Friendly Head string validation if they scratch
       const isBehindHeadString = targetX <= 250;
       if (!isBehindHeadString && mode !== GameMode.SOLO_PRACTICE) {
-        // enforce head-string region placement on multiplayer/AI
         targetX = Math.min(250, targetX);
       }
 
-      // Check overlap spots with other balls
       let overlaps = false;
       for (const obj of balls) {
         if (obj.id === 0 || obj.state !== BallState.ON_TABLE) continue;
@@ -582,12 +579,104 @@ export function PoolTable({
       return;
     }
 
-    // B: Traditional drag calculation to swivel Cue stick angle
+    // B: Traditional drag and grab-stick swivel calculations
     const dx = clickX - cueBall.x;
     const dy = clickY - cueBall.y;
-    const angle = Math.atan2(dy, dx);
+    const alpha = Math.atan2(dy, dx);
 
-    setCueStick((prev) => ({ ...prev, angle, isAiming: true }));
+    const isDrag = e.buttons === 1;
+    let isBackSide = false;
+
+    if (isDrag) {
+      if (isStart) {
+        const angleDiff = Math.atan2(Math.sin(alpha - cueStick.angle), Math.cos(alpha - cueStick.angle));
+        isBackSide = Math.abs(angleDiff) > Math.PI / 2;
+        draggingStickRef.current = isBackSide;
+      } else {
+        isBackSide = draggingStickRef.current;
+      }
+    } else {
+      // Hovering adjustments
+      const angleDiff = Math.atan2(Math.sin(alpha - cueStick.angle), Math.cos(alpha - cueStick.angle));
+      isBackSide = Math.abs(angleDiff) > Math.PI / 2;
+      draggingStickRef.current = isBackSide;
+    }
+
+    const finalAngle = isBackSide ? alpha - Math.PI : alpha;
+    setCueStick((prev) => ({ ...prev, angle: finalAngle, isAiming: true }));
+  };
+
+  // High-precision Touch interaction listener for mobile screens
+  const handleTouchInteraction = (e: React.TouchEvent<HTMLCanvasElement>, isStart: boolean = false) => {
+    if (!isMyTurn || isSimulationActive || isAiTurnText) return;
+    
+    // Prevent default scrolling on mobile when aiming on canvas
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0] || e.changedTouches[0];
+    if (!touch) return;
+
+    const clickX = ((touch.clientX - rect.left) / rect.width) * TABLE_WIDTH;
+    const clickY = ((touch.clientY - rect.top) / rect.height) * TABLE_HEIGHT;
+
+    const cueBall = getCueBall(balls);
+    if (!cueBall || cueBall.state !== BallState.ON_TABLE) return;
+
+    // A: Ball In Hand Active
+    if (ballInHandActive) {
+      const validMinX = CUSHION_WIDTH + BALL_RADIUS + 3;
+      const validMaxX = TABLE_WIDTH - CUSHION_WIDTH - BALL_RADIUS - 3;
+      const validMinY = CUSHION_WIDTH + BALL_RADIUS + 3;
+      const validMaxY = TABLE_HEIGHT - CUSHION_WIDTH - BALL_RADIUS - 3;
+
+      let targetX = Math.max(validMinX, Math.min(validMaxX, clickX));
+      let targetY = Math.max(validMinY, Math.min(validMaxY, clickY));
+
+      const isBehindHeadString = targetX <= 250;
+      if (!isBehindHeadString && mode !== GameMode.SOLO_PRACTICE) {
+        targetX = Math.min(250, targetX);
+      }
+
+      let overlaps = false;
+      for (const obj of balls) {
+        if (obj.id === 0 || obj.state !== BallState.ON_TABLE) continue;
+        const d = Math.sqrt((obj.x - targetX) ** 2 + (obj.y - targetY) ** 2);
+        if (d < BALL_RADIUS * 2) {
+          overlaps = true;
+          break;
+        }
+      }
+
+      if (!overlaps) {
+        setBalls((current) =>
+          current.map((b) => (b.id === 0 ? { ...b, x: targetX, y: targetY, vx: 0, vy: 0 } : b))
+        );
+      }
+      return;
+    }
+
+    // B: Stick/Aim dragging calculation
+    const dx = clickX - cueBall.x;
+    const dy = clickY - cueBall.y;
+    const alpha = Math.atan2(dy, dx);
+
+    let isBackSide = false;
+    if (isStart) {
+      const angleDiff = Math.atan2(Math.sin(alpha - cueStick.angle), Math.cos(alpha - cueStick.angle));
+      isBackSide = Math.abs(angleDiff) > Math.PI / 2;
+      draggingStickRef.current = isBackSide;
+    } else {
+      isBackSide = draggingStickRef.current;
+    }
+
+    const finalAngle = isBackSide ? alpha - Math.PI : alpha;
+    setCueStick((prev) => ({ ...prev, angle: finalAngle, isAiming: true }));
   };
 
   const spinAngle = (radFraction: number) => {
@@ -682,10 +771,18 @@ export function PoolTable({
         </div>
       </div>
 
+      {/* Mobile Orientation Warning / Guide */}
+      <div className="block sm:hidden pb-1 w-full text-center">
+        <p className="text-[10px] text-amber-500 bg-amber-500/10 border border-amber-905/20 py-1.5 px-3 rounded-xl flex items-center justify-center gap-1.5 animate-pulse">
+          <RotateCw className="h-3 w-3 text-amber-500" />
+          💡 للعب بدقة أكبر وتكبير الطاولة، نقترح تدوير هاتفك بالوضعية الأفقية (Landscape)!
+        </p>
+      </div>
+
       {/* Primary Pool table viewport framework */}
       <div
         ref={containerRef}
-        className="relative flex flex-col lg:flex-row items-center justify-center p-4 w-full max-w-5xl border border-slate-800 bg-slate-950/40 hover:border-slate-700/80 transition-all rounded-3xl gap-6 xl:gap-8"
+        className="relative flex flex-col sm:flex-row md:flex-row lg:flex-row items-center justify-center p-2 sm:p-4 w-full max-w-5xl border border-slate-800 bg-slate-950/40 hover:border-slate-700/80 transition-all rounded-2xl md:rounded-3xl gap-4 md:gap-6 xl:gap-8"
       >
         {/* Canvas table container */}
         <div className="relative overflow-hidden border border-slate-900 shadow-2xl shadow-black/80 rounded-2xl aspect-[2/1] w-full max-w-4xl">
@@ -693,9 +790,12 @@ export function PoolTable({
             ref={canvasRef}
             width={TABLE_WIDTH}
             height={TABLE_HEIGHT}
-            onMouseMove={handleCanvasInteraction}
-            onMouseDown={handleCanvasInteraction}
-            className={`w-full h-full block cursor-crosshair ${
+            onMouseMove={(e) => handleCanvasInteraction(e, false)}
+            onMouseDown={(e) => handleCanvasInteraction(e, true)}
+            onTouchStart={(e) => handleTouchInteraction(e, true)}
+            onTouchMove={(e) => handleTouchInteraction(e, false)}
+            onTouchEnd={() => setCueStick((prev) => ({ ...prev, isAiming: false }))}
+            className={`w-full h-full block touch-none cursor-crosshair ${
               ballInHandActive ? "cursor-move" : "cursor-crosshair"
             }`}
           />
@@ -703,7 +803,7 @@ export function PoolTable({
 
         {/* Charge power shot console */}
         {isMyTurn && !isSimulationActive && !isAiTurnText && !ballInHandActive && (
-          <div className="flex flex-col items-center justify-center p-4 border border-slate-800 bg-slate-900/50 rounded-2xl w-full lg:w-48 xl:w-56 text-center shrink-0">
+          <div className="flex flex-col items-center justify-center p-3 sm:p-4 border border-slate-800 bg-slate-900/50 rounded-2xl w-full sm:w-44 md:w-48 lg:w-48 xl:w-56 text-center shrink-0">
             <span className="text-xs font-semibold text-slate-400 mb-4 tracking-wider uppercase block">
               عداد قوة الضربة
             </span>

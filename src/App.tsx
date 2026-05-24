@@ -29,7 +29,8 @@ import {
   fetchOrCreateProfile,
   updateProfile,
   OperationType,
-  handleFirestoreError
+  handleFirestoreError,
+  firebaseConfig
 } from "./lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
 import {
@@ -51,7 +52,10 @@ import {
   Trophy,
   RotateCcw,
   RefreshCw,
-  LogOut
+  LogOut,
+  AlertTriangle,
+  X,
+  Globe
 } from "lucide-react";
 import { setSoundVolume, playPocketPlop, getSoundVolume } from "./lib/audio";
 
@@ -111,6 +115,7 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Setup sound settings from local tracker
   useEffect(() => {
@@ -499,10 +504,19 @@ export default function App() {
 
   // Lobby Matchmaker actions
   const handleGoogleAuth = async () => {
+    setAuthError(null);
     try {
       await signInWithGoogle();
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error("Google Auth error:", e);
+      const errMsg = e instanceof Error ? e.message : String(e);
+      const errCode = e.code || "";
+      
+      if (errCode.includes("auth/unauthorized-domain") || errMsg.includes("unauthorized-domain") || errMsg.includes("auth/unauthorized-domain")) {
+        setAuthError("unauthorized-domain");
+      } else {
+        setAuthError(errMsg);
+      }
     }
   };
 
@@ -910,6 +924,64 @@ export default function App() {
       />
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 pt-6">
+        {authError && (
+          <div className="mb-6 p-5 border border-red-500/30 bg-red-950/20 rounded-2xl text-slate-100 relative overflow-hidden animate-fade-in" id="auth-error-guide-banner">
+            <button
+              onClick={() => setAuthError(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition p-1 bg-slate-900/60 rounded-full cursor-pointer"
+              title="إغلاق التنبيه"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            
+            <div className="flex items-start gap-3.5">
+              <div className="p-2 bg-red-500/10 text-red-400 rounded-xl mt-0.5">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="space-y-4 flex-1">
+                <div>
+                  <h3 className="text-sm font-bold text-red-400">🚨 خطأ تسجيل الدخول: نطاق غير مصرح به (Domain Unauthorized)</h3>
+                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                    فشلت عملية تسجيل الدخول بـ Google لأن النطاق الحالي للعبة غير مصرح به في إعدادات مشروع Firebase الخاص بك. لحل هذه المشكلة وتمكين تسجيل الدخول فوراً، اتبع الخطوات البسيطة التالية:
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950/80 p-4 rounded-xl border border-slate-900 font-sans text-xs">
+                  <div className="space-y-2">
+                    <span className="font-bold text-slate-305 block">📋 خطوات التفعيل من لوحة تحكم Firebase:</span>
+                    <ol className="list-decimal list-inside space-y-1.5 text-slate-400 text-3xs">
+                      <li>افتَح <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline inline-flex items-center gap-0.5">لوحة تحكم Firebase <Globe className="h-3 w-3" /></a></li>
+                      <li>اختر مشروعك: <span className="text-amber-500 font-mono font-bold select-all bg-slate-900 px-1 py-0.5 rounded">{firebaseConfig.projectId || "مشروع اللعبة"}</span></li>
+                      <li>انتقل لـ <span className="text-slate-200 font-semibold">Build (إنشاء)</span> ثم <span className="text-slate-200 font-semibold">Authentication</span>.</li>
+                      <li>اضغط على تبويب <span className="text-slate-200 font-semibold">Settings</span> (الإعدادات) بالأعلى.</li>
+                      <li>اختر <span className="text-slate-200 font-semibold">Authorized domains</span> (النطاقات المصرح بها).</li>
+                      <li>اضغط <span className="text-slate-200 font-semibold">Add domain</span> ثم ضع النطاق الحالي واضغط حفظ.</li>
+                    </ol>
+                  </div>
+
+                  <div className="space-y-3 border-t md:border-t-0 md:border-r border-slate-900 pt-3 md:pt-0 md:pr-4">
+                    <span className="font-bold text-slate-305 block">🌐 تفاصيل النطاق والمشروع الحالية:</span>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-3xs text-slate-400 block mb-0.5">النطاق المطلوب إضافته (Domain to copy):</span>
+                        <code className="text-emerald-400 font-mono font-bold select-all bg-slate-900 px-2 py-1 rounded block text-center tracking-wider">{window.location.hostname}</code>
+                      </div>
+                      <div>
+                        <span className="text-3xs text-slate-400 block mb-0.5">معرف المشروع (Project ID):</span>
+                        <code className="text-amber-500 font-mono font-bold select-all bg-slate-900 px-2 py-1 rounded block text-center tracking-wider">{firebaseConfig.projectId}</code>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-3xs text-slate-400">
+                  ⚠️ إذا واجهتك أي مشاكل، يظل بإمكانك لعب البلياردو مباشرةً وبشكل كامل في الوضع المحلي دون الحاجة لتسجيل الدخول، ويتم حفظ تقدمك تلقائياً على جهازك الحالي.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {selectedMode !== null ? (
           renderActivePlayMode()
         ) : currentTab === "lobby" ? (
